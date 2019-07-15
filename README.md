@@ -1,2 +1,1 @@
-# myDataSet
-Non-iid MNIST dataset
+# FL and MAML
