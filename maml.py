@@ -5,7 +5,7 @@ import torch.optim as optim
 import torch.utils.data as Data
 from torch.autograd import Variable
 import myModel
-from myModel import AccuracyCompute
+from utils import AccuracyCompute
 from fl import aggregation
 
 def maml_local(x_train, y_train, x_test, y_test, lr, num_epochs, batch_size, weights=None):

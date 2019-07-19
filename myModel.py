@@ -45,11 +45,3 @@ class LeNet(nn.Module):
         x = self.fc2(x)
         x = self.fc3(x)
         return x
-
-def AccuracyCompute(pred,label):
-    pred = pred.cpu().data.numpy()
-    label = label.cpu().data.numpy()
-    test_np = (np.argmax(pred,1) == label)
-    test_np = np.float32(test_np)
-    return np.mean(test_np)
-

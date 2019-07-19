@@ -3,29 +3,26 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.utils.data as Data
-import myModel
-from myModel import AccuracyCompute
+from utils import create_model
+from utils import AccuracyCompute
 
-def train(input_data, model, loss_func, optimizer=None, LeNet=False):
+def run(input_data, model, loss_func, optimizer=None):
     loss_list, acc_list = [], []
-
-    if optimizer is not None:
-        model.train()
-    else:
-        model.eval()
+    if optimizer: model.train()
+    else: model.eval()
 
     for i, data in enumerate(input_data):
-        if optimizer is not None:
+        if optimizer:
             optimizer.zero_grad()
-        inputs = data[:, 0:-1]
-        if LeNet == True:
-            inputs = inputs.reshape(inputs.shape[0], 1, 28, 28)
-        labels = data[:, -1]
-        outputs = model(inputs.float())
-        loss = loss_func(outputs, labels.long())
+        inputs = data[0]
+        labels = data[-1]
+        inputs = inputs.type(torch.float32)
+        labels = labels.type(torch.long)
+        outputs = model(inputs)
+        loss = loss_func(outputs, labels)
         loss_list.append(loss)
-        acc_list.append(AccuracyCompute(outputs, labels.long()))
-        if optimizer is not None:
+        acc_list.append(AccuracyCompute(outputs, labels))
+        if optimizer:
             loss.backward()
             optimizer.step()
 
@@ -33,43 +30,37 @@ def train(input_data, model, loss_func, optimizer=None, LeNet=False):
     loss = torch.mean(torch.stack(loss_list))
     return accuracy, loss
 
-def local_train(x_train, y_train, x_test, y_test, lr, num_epochs, batch_size, weights=None):
-    x_train = x_train.reshape(x_train.shape[0], 784)
-    x_test = x_test.reshape(x_test.shape[0], 784)
+def local_train(data_train, data_test, args, initial_weights):
+    train_data = Data.DataLoader(data_train, batch_size=args.batch_size, shuffle=True)
+    test_data = Data.DataLoader(data_test, batch_size=args.batch_size, shuffle=True)
 
-    train_data = np.column_stack((x_train,y_train))
-    train_data = Data.DataLoader(train_data, batch_size=batch_size, shuffle=True)
-    test_data = np.column_stack((x_test, y_test))
-    test_data = Data.DataLoader(test_data, batch_size=batch_size, shuffle=True)
+    model = create_model(args)
 
-    model = myModel.MLP()
-    #model = myModel.LeNet()
-
-    optimizer = optim.SGD(model.parameters(), lr=lr)
+    optimizer = optim.SGD(model.parameters(), lr=args.learning_rate)
     loss_func = nn.CrossEntropyLoss()
 
     # load weights
-    if weights is not None:
-        model.load_state_dict(weights)
+    model.load_state_dict(initial_weights)
 
     # train
-    for epoch_idx in range(num_epochs):
-        train(train_data, model, loss_func, optimizer)
+    for epoch_idx in range(args.num_epochs):
+        run(train_data, model, loss_func, optimizer)
 
-    train_acc, train_loss = train(train_data, model, loss_func)
-    test_acc, test_loss = train(test_data, model, loss_func)
+    # eval
+    with torch.no_grad():
+        train_acc, train_loss = run(train_data, model, loss_func)
+        test_acc, test_loss = run(test_data, model, loss_func)
 
     return model, train_acc, test_acc, train_loss, test_loss
 
-def aggregation(num_clients,client_indexes,x_train,y_train,x_test,y_test,lr,num_epochs,batch_size,initial_weights=None):
+def aggregation(data_train, data_test, args, clientIDs, initial_weights):
     all_train_acc, all_train_loss = [], []
     all_test_acc, all_test_loss = [], []
     model_list = []
 
-    for clientID in client_indexes:
-        model, train_acc, test_acc, train_loss, test_loss = local_train(x_train[clientID], y_train[clientID],
-                                                                        x_test[clientID], y_test[clientID], lr,
-                                                                        num_epochs, batch_size, initial_weights)
+    for clientID in clientIDs:
+        model, train_acc, test_acc, train_loss, test_loss = local_train(data_train[clientID], data_test[clientID],
+                                                                        args, initial_weights)
         model_list.append(model)
         all_train_acc.append(train_acc)
         all_train_loss.append(train_loss)
@@ -79,7 +70,7 @@ def aggregation(num_clients,client_indexes,x_train,y_train,x_test,y_test,lr,num_
     for key in model_list[0].state_dict().keys():
         for i in range(1, len(model_list)):
             model_list[0].state_dict()[key].add_(model_list[i].state_dict()[key])
-        model_list[0].state_dict()[key] /= num_clients
+        model_list[0].state_dict()[key] /= len(clientIDs)
 
     mean_train_acc = np.mean(all_train_acc, axis=0)
     mean_train_loss = torch.mean(torch.stack(all_train_loss))
@@ -91,21 +82,24 @@ def aggregation(num_clients,client_indexes,x_train,y_train,x_test,y_test,lr,num_
     print('average_test_loss={}' .format(mean_test_loss))
     return model_list[0].state_dict(), mean_train_acc, mean_test_acc, mean_train_loss, mean_test_loss
 
-def FL(num_rounds, num_clients, x_train, y_train, x_test, y_test, lr, num_epochs, batch_size):
+def FL(data_train, data_test, args):
     train_acc, train_loss = [], []
     test_acc, test_loss = [], []
+
+    # number of selected clients per round
+    num_clients = int(args.fraction * len(data_train))
+
     print('FL:\n')
+
     # initial model
-    print('initialization round:')
-    initial_indexes = np.random.choice(range(len(x_train)), num_clients, replace=False)
-    weights = aggregation(num_clients, initial_indexes, x_train, y_train, x_test, y_test, lr, num_epochs, batch_size)[0]
-    print()
+    model = create_model(args)
+    weights = model.state_dict()
+
     # FL iterations
-    for round_num in range(1, num_rounds + 1):
+    for round_num in range(1, args.num_rounds + 1):
         print('round {:2d}:' .format(round_num))
-        indexes_per_round = np.random.choice(range(len(x_train)), num_clients, replace=False)
-        weights, acc1, acc2, loss1, loss2 = aggregation(num_clients, indexes_per_round, x_train, y_train, x_test, y_test,
-                                                        lr, num_epochs, batch_size, weights)
+        clientIDs = np.random.choice(range(len(data_train)), num_clients, replace=False)
+        weights, acc1, acc2, loss1, loss2 = aggregation(data_train, data_test, args, clientIDs, weights)
         train_acc.append(acc1)
         train_loss.append(loss1)
         test_acc.append(acc2)
