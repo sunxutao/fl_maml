@@ -7,7 +7,7 @@ from utils import create_model, AvgrageMeter, run
 
 
 
-def local_train(data_train, data_test, args, initial_weights, num_epochs, lr):
+def client_update(data_train, data_test, args, initial_weights, lr, num_epochs=1):
     # create and initialize model
     model = create_model(args, initial_weights)
 
@@ -27,13 +27,11 @@ def local_train(data_train, data_test, args, initial_weights, num_epochs, lr):
 def aggregation(data_train, data_test, args, clientIDs, initial_weights):
     mean_train_acc, mean_train_loss = AvgrageMeter(), AvgrageMeter()
     mean_test_acc, mean_test_loss = AvgrageMeter(), AvgrageMeter()
-    num_examples = []
     weight_dict_list = []
 
     for clientID in clientIDs:
-        model, train_acc, train_loss, test_acc_list, test_loss_list=local_train(data_train[clientID],
-                                    data_test[clientID], args, initial_weights, args.train_epochs, args.train_lr)
-        num_examples.append(len(data_train[clientID]))
+        model, train_acc, train_loss, test_acc_list, test_loss_list=client_update(data_train[clientID],
+                                    data_test[clientID], args, initial_weights, args.train_lr, 1)
         # load state_dict for each client
         weight_dict_list.append(model.state_dict())
         mean_train_acc.update(train_acc, 1)
@@ -41,12 +39,11 @@ def aggregation(data_train, data_test, args, clientIDs, initial_weights):
         mean_test_acc.update(test_acc_list[-1], 1)
         mean_test_loss.update(test_loss_list[-1], 1)
 
-    # fedAveraging
+    # meta-learning
     for key in weight_dict_list[0].keys():
-        weight_dict_list[0][key] *= num_examples[0]
         for model_id in range(1, len(weight_dict_list)):
-            weight_dict_list[0][key].add_(weight_dict_list[model_id][key] * num_examples[model_id])
-        weight_dict_list[0][key].div_(np.sum(num_examples))
+            weight_dict_list[0][key].add_(weight_dict_list[model_id][key])
+        weight_dict_list[0][key].mul_(args.global_lr/len(clientIDs)).add_((1-args.global_lr)*initial_weights[key])
 
     return weight_dict_list[0], mean_train_acc.avg, mean_train_loss.avg, mean_test_acc.avg, mean_test_loss.avg
 
@@ -67,8 +64,8 @@ def localization(data_train, data_test, args, initial_weights):
     test_acc, test_loss = [], []
 
     for clientID in range(len(data_train)):
-        _, train_acc, train_loss, test_acc_list, test_loss_list=local_train(data_train[clientID], data_test[clientID],
-                                                    args, initial_weights, args.local_epochs, args.local_lr)
+        _, train_acc, train_loss, test_acc_list, test_loss_list=client_update(data_train[clientID], data_test[clientID],
+                                                    args, initial_weights, args.local_lr, args.local_epochs)
         mean_train_acc.update(train_acc, 1)
         mean_train_loss.update(train_loss, 1)
         test_acc.append(test_acc_list)
@@ -79,19 +76,27 @@ def localization(data_train, data_test, args, initial_weights):
 
     return mean_train_acc.avg, mean_train_loss.avg, test_acc, test_loss
 
-def FL(support_train, support_test, test_train, test_test, args):
-    # Convert to data loader
+def FR(support_train, support_test, test_train, test_test, args):
+    # filter unqualified client sets
+    support_train = [support_train[i] for i in range(len(support_train))
+                     if len(support_train[i]) > 30 and len(support_train[i]) < 500]
+    test_train = [test_train[i] for i in range(len(test_train))
+                     if len(test_train[i]) > 30 and len(test_train[i]) < 500]
+
+    # convert to data loader and split to batches
     for i in range(len(support_train)):
-        support_train[i] = Data.DataLoader(support_train[i], batch_size=args.batch_size, shuffle=True)
+        batch_size = int(len(support_train[i]) / args.train_epochs)
+        support_train[i] = Data.DataLoader(support_train[i], batch_size=batch_size, shuffle=True, drop_last=True)
         support_test[i] = Data.DataLoader(support_test[i], batch_size=args.batch_size, shuffle=False)
     for i in range(len(test_train)):
-        test_train[i] = Data.DataLoader(test_train[i], batch_size=args.batch_size, shuffle=True)
+        batch_size = int(len(support_train[i]) / args.local_epochs)
+        test_train[i] = Data.DataLoader(test_train[i], batch_size=batch_size, shuffle=True, drop_last=True)
         test_test[i] = Data.DataLoader(test_test[i], batch_size=args.batch_size, shuffle=False)
 
     # number of selected clients per round
     num_clients = int(args.fraction * len(support_train))
 
-    print('FL:\n')
+    print('FR:\n')
 
     # initial model
     model = create_model(args)
@@ -108,24 +113,25 @@ def FL(support_train, support_test, test_train, test_test, args):
         args.train_lr = scheduler.get_lr()[0]
         scheduler.step()
         clientIDs = np.random.choice(range(len(support_train)), num_clients, replace=False)
-        weights, train_acc, train_loss, acc1, loss1= aggregation(support_train, support_test, args, clientIDs, weights)
-
+        weights, train_acc, train_loss, acc1, loss1=aggregation(support_train, support_test, args, clientIDs, weights)
         # log info
         logging.info('support_train_acc {:.6f}, support_train_loss {:.6f},'
                      'support_test_acc {:.6f}, support_test_loss {:.6f}' .format(train_acc, train_loss, acc1, loss1))
+
         if round_num % args.test_client_interval == 0:
             # update model
             model.load_state_dict(weights)
 
             # Eval on test client sets with current weights
             acc2, loss2 = evaluation(test_test, args, model)
+            # log info
+            logging.info('initial_acc {:.6f}, initial_loss {:.6f}' .format(acc2, loss2))
 
             # Eval on test client sets with localization
             acc3, loss3, test_acc, test_loss = localization(test_train, test_test, args, weights)
-
             #log info
-            logging.info('initial_acc {:.6f}, initial_loss {:.6f}, localization_acc {:.6f}, localization_loss {:.6f}'
-                         .format(acc2, loss2, acc3, loss3))
+            logging.info('localization_acc {:.6f}, localization_loss {:.6f}'
+                         .format(acc3, loss3))
             for i in range(len(test_acc)):
                 logging.info('epoch: {:2d}: test acc: {:.6f}, test loss: {:.6f}' .format(i, test_acc[i], test_loss[i]))
 

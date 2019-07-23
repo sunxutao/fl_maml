@@ -1,6 +1,7 @@
 import h5py
 import torch
 import os
+import numpy as np
 import shutil
 import myModel
 
@@ -19,12 +20,25 @@ def load_data(hdf5_file, args):
         processed_data.append(list(zip(data[i], label[i])))
     return processed_data
 
+def split_data(train, test, args):
+    num_support = int(len(train) * args.fraction_t)
+    support_IDs = np.random.choice(range(len(train)), num_support, replace=False)
+    support_train, support_test, test_train, test_test = [], [], [], []
+    for i in range(len(train)):
+        if i in support_IDs:
+            support_train.append(train[i])
+            support_test.append(test[i])
+        else:
+            test_train.append(train[i])
+            test_test.append(test[i])
+    return support_train, support_test, test_train, test_test
 
-def create_model(args):
+def create_model(args, initial_weights=None):
     if args.model == 'MLP':
         model = myModel.MLP().to(args.device)
     elif args.model == 'LeNet':
         model = myModel.LeNet().to(args.device)
+    if initial_weights: model.load_state_dict(initial_weights)
     return model
 
 def run(input_data, model, loss_func, optimizer=None):
