@@ -9,11 +9,11 @@ import sys
 from fl import FL
 from utils import load_data, split_data, create_exp_dir
 from fedreptile import FR
-
+import time
 
 # parameters
 parser = argparse.ArgumentParser("FL_MAML")
-parser.add_argument('--algo', type=str, default='FL', help='Algorithm: Federated Learning or FedReptile') # FL or FR
+parser.add_argument('--algo', type=str, default='FR', help='Algorithm: Federated Learning or FedReptile') # FL or FR
 parser.add_argument('--model', type=str, default='LeNet', help='model') # MLP or LeNet
 parser.add_argument('--gpu', type=str, default='cuda', help='use gpu or cpu') # cuda or cpu
 parser.add_argument('--log_path', type=str, default='log', help='log folder name')
@@ -23,8 +23,9 @@ parser.add_argument('--fraction', type=float, default=0.005, help='fraction of s
 parser.add_argument('--fraction_t', type=float, default=0.9, help='fraction of support clients for meta learning')
 
 # epoch related parameters
-parser.add_argument('--num_rounds', type=int, default=1500, help='number of communication rounds')
-parser.add_argument('--train_epochs', type=int, default=10, help='number of training epochs') # 1 10 20
+parser.add_argument('--num_rounds', type=int, default=500, help='number of communication rounds')
+parser.add_argument('--train_epochs', type=int, default=1, help='number of training epochs of FL') # 1 10 20
+parser.add_argument('--inner_iterations', type=int, default=10, help='number of inner iterations of FR client update')
 parser.add_argument('--local_epochs', type=int, default=10, help='number of localization epochs')
 
 # batch size
@@ -47,8 +48,13 @@ create_exp_dir(args.save_path)
 log_format = '%(asctime)s %(message)s'
 logging.basicConfig(stream=sys.stdout, level=logging.INFO,
                     format=log_format, datefmt='%m/%d %I:%M:%S')
-fh = logging.FileHandler(os.path.join(args.save_path, '{}_{}_E{}_B{}_C{}.txt'
-                .format(args.algo, args.model, args.train_epochs, args.batch_size, args.fraction))) # Model_E_B_C.txt
+time_stamp = time.time()
+time_arr = time.localtime(time_stamp)
+# Time_Model_E_B_C.txt
+fh = logging.FileHandler(os.path.join(args.save_path, '{}{}{}{}{}{}_{}_{}_E{}_B{}_C{}.txt'
+                                      .format(time_arr[0],str(time_arr[1]).zfill(2),str(time_arr[2]).zfill(2),
+                                        str(time_arr[3]).zfill(2),str(time_arr[4]).zfill(2),str(time_arr[5]).zfill(2),
+                                        args.algo,args.model,args.train_epochs,args.batch_size,args.fraction)))
 fh.setFormatter(logging.Formatter(log_format))
 logger = logging.getLogger()
 logger.addHandler(fh)

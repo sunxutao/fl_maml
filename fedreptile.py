@@ -6,7 +6,6 @@ import torch.utils.data as Data
 from utils import create_model, AvgrageMeter, run
 
 
-
 def client_update(data_train, data_test, args, initial_weights, lr, num_epochs=1):
     # create and initialize model
     model = create_model(args, initial_weights)
@@ -62,7 +61,6 @@ def evaluation(data, args, model):
 def localization(data_train, data_test, args, initial_weights):
     mean_train_acc, mean_train_loss = AvgrageMeter(), AvgrageMeter()
     test_acc, test_loss = [], []
-
     for clientID in range(len(data_train)):
         _, train_acc, train_loss, test_acc_list, test_loss_list=client_update(data_train[clientID], data_test[clientID],
                                                     args, initial_weights, args.local_lr, args.local_epochs)
@@ -80,16 +78,20 @@ def FR(support_train, support_test, test_train, test_test, args):
     # filter unqualified client sets
     support_train = [support_train[i] for i in range(len(support_train))
                      if len(support_train[i]) > 30 and len(support_train[i]) < 500]
+    support_test = [support_test[i] for i in range(len(support_train))
+                     if len(support_train[i]) > 30 and len(support_train[i]) < 500]
     test_train = [test_train[i] for i in range(len(test_train))
                      if len(test_train[i]) > 30 and len(test_train[i]) < 500]
+    test_test = [test_test[i] for i in range(len(test_train))
+                  if len(test_train[i]) > 30 and len(test_train[i]) < 500]
 
     # convert to data loader and split to batches
     for i in range(len(support_train)):
-        batch_size = int(len(support_train[i]) / args.train_epochs)
+        batch_size = int(len(support_train[i]) / args.inner_iterations)
         support_train[i] = Data.DataLoader(support_train[i], batch_size=batch_size, shuffle=True, drop_last=True)
         support_test[i] = Data.DataLoader(support_test[i], batch_size=args.batch_size, shuffle=False)
     for i in range(len(test_train)):
-        batch_size = int(len(support_train[i]) / args.local_epochs)
+        batch_size = int(len(test_train[i]) / args.local_epochs)
         test_train[i] = Data.DataLoader(test_train[i], batch_size=batch_size, shuffle=True, drop_last=True)
         test_test[i] = Data.DataLoader(test_test[i], batch_size=args.batch_size, shuffle=False)
 
@@ -102,16 +104,19 @@ def FR(support_train, support_test, test_train, test_test, args):
     model = create_model(args)
     weights = model.state_dict()
 
-    optimizer = optim.SGD(model.parameters(), lr=args.train_lr)
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.num_rounds)
-
+    op_inner = optim.SGD(model.parameters(), lr=args.train_lr)
+    op_outer = optim.SGD(model.parameters(), lr=args.global_lr)
+    scheduler_inner = optim.lr_scheduler.CosineAnnealingLR(op_inner, T_max=args.num_rounds)
+    scheduler_outer = optim.lr_scheduler.CosineAnnealingLR(op_outer, T_max=args.num_rounds)
     # FL iterations
     for round_num in range(1, args.num_rounds + 1):
         logging.info('round {:2d}:' .format(round_num))
 
         # Train on support client sets
-        args.train_lr = scheduler.get_lr()[0]
-        scheduler.step()
+        args.train_lr = scheduler_inner.get_lr()[0]
+        scheduler_inner.step()
+        args.global_lr = scheduler_outer.get_lr()[0]
+        scheduler_outer.step()
         clientIDs = np.random.choice(range(len(support_train)), num_clients, replace=False)
         weights, train_acc, train_loss, acc1, loss1=aggregation(support_train, support_test, args, clientIDs, weights)
         # log info

@@ -6,7 +6,6 @@ import torch.utils.data as Data
 from utils import create_model, AvgrageMeter, run
 
 
-
 def local_train(data_train, data_test, args, initial_weights, num_epochs, lr):
     # create and initialize model
     model = create_model(args, initial_weights)
@@ -119,13 +118,14 @@ def FL(support_train, support_test, test_train, test_test, args):
 
             # Eval on test client sets with current weights
             acc2, loss2 = evaluation(test_test, args, model)
+            # log info
+            logging.info('initial_acc {:.6f}, initial_loss {:.6f}'.format(acc2, loss2))
 
             # Eval on test client sets with localization
             acc3, loss3, test_acc, test_loss = localization(test_train, test_test, args, weights)
-
-            #log info
-            logging.info('initial_acc {:.6f}, initial_loss {:.6f}, localization_acc {:.6f}, localization_loss {:.6f}'
-                         .format(acc2, loss2, acc3, loss3))
+            # log info
+            logging.info('localization_acc {:.6f}, localization_loss {:.6f}'
+                         .format(acc3, loss3))
             for i in range(len(test_acc)):
                 logging.info('epoch: {:2d}: test acc: {:.6f}, test loss: {:.6f}' .format(i, test_acc[i], test_loss[i]))
 
