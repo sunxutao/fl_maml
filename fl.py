@@ -7,7 +7,6 @@ from utils import create_model, AvgrageMeter, client_update, evaluation, localiz
 import copy
 
 
-
 def aggregation(data_train, data_test, args, clientIDs, model, optimizer):
     mean_train_acc, mean_train_loss = AvgrageMeter(), AvgrageMeter()
     mean_test_acc, mean_test_loss = AvgrageMeter(), AvgrageMeter()
@@ -62,6 +61,7 @@ def FL(support_train, support_test, test_train, test_test, args):
 
     optimizer = optim.SGD(model.parameters(), lr=args.train_lr)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.num_rounds)
+    op_local = optim.SGD(model.parameters(), lr=args.local_lr)
 
     # FL iterations
     for round_num in range(1, args.num_rounds + 1):
@@ -85,7 +85,7 @@ def FL(support_train, support_test, test_train, test_test, args):
             logging.info('initial_acc {:.6f}, initial_loss {:.6f}'.format(acc2, loss2))
 
             # Eval on test client sets with localization
-            acc3, loss3, test_acc, test_loss = localization(test_train, test_test, args, model, optimizer)
+            acc3, loss3, test_acc, test_loss = localization(test_train, test_test, args, model, op_local)
             # log info
             logging.info('localization_acc {:.6f}, localization_loss {:.6f}' .format(acc3, loss3))
             for i in range(len(test_acc)):

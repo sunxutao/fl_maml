@@ -3,8 +3,9 @@ import logging
 import torch
 import torch.optim as optim
 import torch.utils.data as Data
-from utils import create_model, AvgrageMeter, client_update, evaluation, localization
+from utils import create_model, AvgrageMeter, client_update, evaluation, localization, run
 import copy
+
 
 def aggregation(data_train, data_test, args, clientIDs, model, optimizer):
     mean_train_acc, mean_train_loss = AvgrageMeter(), AvgrageMeter()
@@ -17,7 +18,7 @@ def aggregation(data_train, data_test, args, clientIDs, model, optimizer):
     for clientID in clientIDs:
         model.load_state_dict(initial_weights)
         model, train_acc, train_loss, test_acc_list, test_loss_list=client_update(data_train[clientID],
-                                    data_test[clientID], args, model, optimizer, args.train_epochs)
+                                    data_test[clientID], args, model, optimizer, 1)
         # load state_dict for each client
         weight_dict_list.append(copy.deepcopy(model.state_dict()))
         mean_train_acc.update(train_acc, 1)
@@ -66,14 +67,14 @@ def FR(dsupport_train, dsupport_test, dtest_train, dtest_test, args):
 
     # initial model
     model = create_model(args)
-    weights = model.state_dict()
 
     op_inner = optim.SGD(model.parameters(), lr=args.train_lr)
-    op_outer = optim.SGD(model.parameters(), lr=args.global_lr)
     scheduler_inner = optim.lr_scheduler.CosineAnnealingLR(op_inner, T_max=args.num_rounds)
+    op_outer = optim.SGD(model.parameters(), lr=args.global_lr)
     scheduler_outer = optim.lr_scheduler.CosineAnnealingLR(op_outer, T_max=args.num_rounds)
+    op_local = optim.SGD(model.parameters(), lr=args.local_lr)
 
-    # FL iterations
+    # FR iterations
     for round_num in range(1, args.num_rounds + 1):
         # update inner lr
         optimizer = optim.SGD(model.parameters(), lr=scheduler_inner.get_lr()[0])
@@ -91,14 +92,14 @@ def FR(dsupport_train, dsupport_test, dtest_train, dtest_test, args):
         logging.info('round {:2d}: support_train_acc {:.6f}, support_train_loss {:.6f}, support_test_acc {:.6f}, '
                      'support_test_loss {:.6f}' .format(round_num, train_acc, train_loss, acc1, loss1))
 
-        if round_num % args.local_interval == 0:
+        if round_num % (args.local_interval * args.train_epochs) == 0:
             # Eval on test client sets with current weights
             acc2, loss2 = evaluation(test_test, args, model)
             # log info
             logging.info('initial_acc {:.6f}, initial_loss {:.6f}' .format(acc2, loss2))
 
             # Eval on test client sets with localization
-            acc3, loss3, test_acc, test_loss = localization(test_train, test_test, args, model, optimizer)
+            acc3, loss3, test_acc, test_loss = localization(test_train, test_test, args, model, op_local)
             #log info
             logging.info('localization_acc {:.6f}, localization_loss {:.6f}' .format(acc3, loss3))
             for i in range(len(test_acc)):

@@ -35,6 +35,7 @@ def load_data(hdf5_file, args):
 
 def split_data(train, test, args):
     num_support = int(len(train) * args.fraction_t)
+    # shuffle
     support_IDs = np.random.choice(range(len(train)), num_support, replace=False)
     support_train, support_test, test_train, test_test = [], [], [], []
     for i in range(len(train)):

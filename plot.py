@@ -9,12 +9,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser("Plot")
     parser.add_argument('--fl_log_path', type=str, default=None, help='FL log path for plotting')
     parser.add_argument('--fr_log_path', type=str, default=None, help='FR log path for plotting')
-    parser.add_argument('--num_rounds', type=int, default=100, help='range of rounds for observation')
+    parser.add_argument('--num_rounds', type=int, default=1000, help='range of rounds for observation')
     args = parser.parse_args()
     args.local_interval = 10
 
-    args.fl_log_path = '/home/sunxutao/logs/20190727112302_FL_LeNet_E1_B10_C0.005.txt'
-    args.fr_log_path = '/home/sunxutao/logs/20190727112409_FR_LeNet_E1_B10_C0.005.txt'
+    args.fl_log_path = '/home/sunxutao/logs/group2/20190731130152_FL_LSTM_E1_B10_C0.2.txt'
+    args.fr_log_path = '/home/sunxutao/logs/group2/20190731130258_FR_LSTM_E1_B10_C0.2.txt'
     # args.log_path = 'log/20190724210418_FR_LeNet_E1_B10_C0.005.txt'
 
 
@@ -120,12 +120,18 @@ if __name__ == '__main__':
         fr_support_test_acc = fr_support_test_acc[:args.num_rounds + 1]
         fr_test_test_acc = fr_test_test_acc[:args.num_rounds + 1]
 
+#######################################################################################################
 
     plt.figure(1)
     plt.title('Test Accuracy')
     plt.xlabel('round')
     plt.ylabel('accuracy')
-    plt.ylim(bottom=0.0, top=100.0)
+    # plt.ylim(bottom=0.0, top=100.0)
+
+    # # sample data
+    # interval = 10
+    # fl_support_test_acc = [fl_support_test_acc[i] for i in range(len(fl_support_test_acc)) if i % interval == 0]
+    # fr_support_test_acc = [fr_support_test_acc[i] for i in range(len(fr_support_test_acc)) if i % interval == 0]
 
     x = np.arange(1, len(fl_support_test_acc) + 1)
     l1 = plt.plot(x, fl_support_test_acc, 'r-', label=('FL B={} E={} C={}'
@@ -146,7 +152,7 @@ if __name__ == '__main__':
     plt.title('Localization')
     plt.xlabel('round')
     plt.ylabel('accuracy')
-    plt.ylim(bottom=0.0, top=100.0)
+    # plt.ylim(bottom=0.0, top=100.0)
 
     x = np.arange(1, len(fl_test_test_acc) + 1)
     l3 = plt.plot(x, fl_test_test_acc, 'r-', label=('FL B={} E={} C={}'
@@ -160,4 +166,3 @@ if __name__ == '__main__':
 
     plt.legend()
     plt.show()
-

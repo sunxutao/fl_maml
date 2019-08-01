@@ -17,7 +17,7 @@ def aggregation(data_train, data_test, args, clientIDs, model, optimizer):
     for clientID in clientIDs:
         model.load_state_dict(initial_weights)
         model, train_acc, train_loss, test_acc_list, test_loss_list=lstm_train(data_train[clientID],
-                                    data_test[clientID], args, model, optimizer, args.lstm_epochs)
+                                    data_test[clientID], args, model, optimizer, args.train_epochs)
         num_examples.append(len(data_train[clientID]))
         # load state_dict for each client
         weight_dict_list.append(copy.deepcopy(model.state_dict()))
@@ -46,9 +46,9 @@ def FL_LSTM(dsupport_train, dsupport_test, dtest_train, dtest_test, args):
     support_test = [dsupport_test[i] for i in range(len(dsupport_train))
                     if (len(dsupport_train[i]) > 1 and len(dsupport_test[i]) > 1)]
     test_train = [dtest_train[i] for i in range(len(dtest_train))
-                  if len(dtest_train[i]) > 1 and len(dtest_test[i]) > 1]
+                  if (len(dtest_train[i]) > 1 and len(dtest_test[i]) > 1)]
     test_test = [dtest_test[i] for i in range(len(dtest_train))
-                 if len(dtest_train[i]) > 1 and len(dtest_test[i]) > 1]
+                 if (len(dtest_train[i]) > 1 and len(dtest_test[i]) > 1)]
     # print('After filter:')
     logging.info('number_support_client: {}'.format(len(support_train)))
     logging.info('number_test_client: {}'.format(len(test_train)))
@@ -62,6 +62,7 @@ def FL_LSTM(dsupport_train, dsupport_test, dtest_train, dtest_test, args):
     # initial model
     model = create_model(args)
     optimizer = optim.SGD(model.parameters(), lr=args.lstm_lr)
+    op_local = optim.SGD(model.parameters(), lr=args.lstm_local_lr)
 
     # FL iterations
     for round_num in range(1, args.num_rounds + 1):
@@ -81,7 +82,7 @@ def FL_LSTM(dsupport_train, dsupport_test, dtest_train, dtest_test, args):
             logging.info('initial_acc {:.6f}, initial_loss {:.6f}'.format(acc2, loss2))
 
             # Eval on test client sets with localization
-            acc3, loss3, test_acc, test_loss = lstm_localization(test_train, test_test, args, model, optimizer)
+            acc3, loss3, test_acc, test_loss = lstm_localization(test_train, test_test, args, model, op_local)
             # log info
             logging.info('localization_acc {:.6f}, localization_loss {:.6f}'.format(acc3, loss3))
             for i in range(len(test_acc)):

@@ -17,7 +17,7 @@ def aggregation(data_train, data_test, args, clientIDs, model, optimizer):
     for clientID in clientIDs:
         model.load_state_dict(initial_weights)
         model, train_acc, train_loss, test_acc_list, test_loss_list=lstm_train(data_train[clientID],
-                                    data_test[clientID], args, model, optimizer, args.lstm_epochs)
+                                    data_test[clientID], args, model, optimizer, 1)
         num_examples.append(len(data_train[clientID]))
         # load state_dict for each client
         weight_dict_list.append(copy.deepcopy(model.state_dict()))
@@ -43,9 +43,9 @@ def FR_LSTM(dsupport_train, dsupport_test, dtest_train, dtest_test, args):
     support_test = [dsupport_test[i] for i in range(len(dsupport_train))
                     if (len(dsupport_train[i]) > 1 and len(dsupport_test[i]) > 1)]
     test_train = [dtest_train[i] for i in range(len(dtest_train))
-                  if len(dtest_train[i]) > 1 and len(dtest_test[i]) > 1]
+                  if (len(dtest_train[i]) > 1 and len(dtest_test[i]) > 1)]
     test_test = [dtest_test[i] for i in range(len(dtest_train))
-                 if len(dtest_train[i]) > 1 and len(dtest_test[i]) > 1]
+                 if (len(dtest_train[i]) > 1 and len(dtest_test[i]) > 1)]
     logging.info('number_support_client: {}'.format(len(support_train)))
     logging.info('number_test_client: {}'.format(len(test_train)))
 
@@ -58,15 +58,16 @@ def FR_LSTM(dsupport_train, dsupport_test, dtest_train, dtest_test, args):
     # initial model
     model = create_model(args)
     optimizer = optim.SGD(model.parameters(), lr=args.lstm_lr)
+    op_local = optim.SGD(model.parameters(), lr=args.lstm_local_lr)
 
-    op_outer = optim.SGD(model.parameters(), lr=args.global_lr)
-    scheduler_outer = optim.lr_scheduler.CosineAnnealingLR(op_outer, T_max=args.num_rounds)
+    # op_outer = optim.SGD(model.parameters(), lr=args.global_lr)
+    # scheduler_outer = optim.lr_scheduler.CosineAnnealingLr(op_outer, T_max=args.num_rounds)
 
-    # FL iterations
+    # FR iterations
     for round_num in range(1, args.num_rounds + 1):
         # update outer lr
-        args.global_lr = scheduler_outer.get_lr()[0]
-        scheduler_outer.step()
+        # args.global_lr = scheduler_outer.get_lr()[0]
+        # scheduler_outer.step()
 
         # Train on support client sets
         clientIDs = np.random.choice(range(len(support_train)), num_clients, replace=False)
@@ -77,14 +78,14 @@ def FR_LSTM(dsupport_train, dsupport_test, dtest_train, dtest_test, args):
         logging.info('round {:2d}: support_train_acc {:.6f}, support_train_loss {:.6f}, support_test_acc {:.6f}, '
                      'support_test_loss {:.6f}'.format(round_num, train_acc, train_loss, acc1, loss1))
 
-        if round_num % args.local_interval == 0:
+        if round_num % (args.local_interval * args.train_epochs) == 0:
             # Eval on test client sets with current weights
             acc2, loss2 = lstm_evaluation(test_test, args, model)
             # log info
             logging.info('initial_acc {:.6f}, initial_loss {:.6f}'.format(acc2, loss2))
 
             # Eval on test client sets with localization
-            acc3, loss3, test_acc, test_loss = lstm_localization(test_train, test_test, args, model, optimizer)
+            acc3, loss3, test_acc, test_loss = lstm_localization(test_train, test_test, args, model, op_local)
             # log info
             logging.info('localization_acc {:.6f}, localization_loss {:.6f}'.format(acc3, loss3))
             for i in range(len(test_acc)):
