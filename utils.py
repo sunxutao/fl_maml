@@ -1,12 +1,8 @@
 import h5py
 import torch
 import os
-import numpy as np
 import shutil
 import myModel
-import torch.optim as optim
-import time
-import copy
 
 def load_data(hdf5_file, args):
     file = h5py.File(hdf5_file, 'r')
@@ -32,20 +28,6 @@ def load_data(hdf5_file, args):
             label[i]=torch.tensor(label[i], device=args.device, dtype=torch.long)
             processed_data.append(list(zip(data[i], label[i])))
     return processed_data
-
-def split_data(train, test, args):
-    num_support = int(len(train) * args.fraction_t)
-    # shuffle
-    support_IDs = np.random.choice(range(len(train)), num_support, replace=False)
-    support_train, support_test, test_train, test_test = [], [], [], []
-    for i in range(len(train)):
-        if i in support_IDs:
-            support_train.append(train[i])
-            support_test.append(test[i])
-        else:
-            test_train.append(train[i])
-            test_test.append(test[i])
-    return support_train, support_test, test_train, test_test
 
 
 class AvgrageMeter(object):
@@ -136,39 +118,6 @@ def client_update(data_train, data_test, args, model, optimizer, num_epochs):
         test_loss_list.append(test_loss)
 
     return model, train_acc, train_loss, test_acc_list, test_loss_list
-
-# eval model on data
-def evaluation(data, args, model):
-    mean_test_acc, mean_test_loss = AvgrageMeter(), AvgrageMeter()
-    for clientID in range(len(data)):
-        with torch.no_grad():
-            test_acc, test_loss = run(data[clientID], model, args.loss_func)
-        mean_test_acc.update(test_acc, 1)
-        mean_test_loss.update(test_loss, 1)
-
-    return mean_test_acc.avg, mean_test_loss.avg
-
-# model localization
-def localization(data_train, data_test, args, model, optimizer):
-    # save the model weights
-    initial_weights = copy.deepcopy(model.state_dict())
-    mean_train_acc, mean_train_loss = AvgrageMeter(), AvgrageMeter()
-    test_acc, test_loss = [], []
-
-    for clientID in range(len(data_train)):
-        model.load_state_dict(initial_weights)
-        _, train_acc, train_loss, test_acc_list, test_loss_list=client_update(data_train[clientID], data_test[clientID],
-                                                    args, model, optimizer, args.local_epochs)
-        mean_train_acc.update(train_acc, 1)
-        mean_train_loss.update(train_loss, 1)
-        test_acc.append(test_acc_list)
-        test_loss.append(test_loss_list)
-
-    test_acc = np.mean(test_acc, axis=0)
-    test_loss = np.mean(test_loss, axis=0)
-    # load the model weights
-    model.load_state_dict(initial_weights)
-    return mean_train_acc.avg, mean_train_loss.avg, test_acc, test_loss
 
 ###########################################################################################
 # LSTM
@@ -284,35 +233,3 @@ def lstm_train(data_train, data_test, args, model, optimizer, num_epochs):
         #       .format(epoch_idx + 1, train_acc, train_loss, test_acc, test_loss))
 
     return model, train_acc, train_loss, test_acc_list, test_loss_list
-
-def lstm_evaluation(data, args, model):
-    mean_test_acc, mean_test_loss = AvgrageMeter(), AvgrageMeter()
-    for clientID in range(len(data)):
-        with torch.no_grad():
-            test_acc, test_loss = lstm_run(data[clientID], model, args)
-        mean_test_acc.update(test_acc, 1)
-        mean_test_loss.update(test_loss, 1)
-
-    return mean_test_acc.avg, mean_test_loss.avg
-
-# model localization
-def lstm_localization(data_train, data_test, args, model, optimizer):
-    # save the model weights
-    initial_weights = copy.deepcopy(model.state_dict())
-    mean_train_acc, mean_train_loss = AvgrageMeter(), AvgrageMeter()
-    test_acc, test_loss = [], []
-
-    for clientID in range(len(data_train)):
-        model.load_state_dict(initial_weights)
-        _, train_acc, train_loss, test_acc_list, test_loss_list=lstm_train(data_train[clientID], data_test[clientID],
-                                                    args, model, optimizer, args.local_epochs)
-        mean_train_acc.update(train_acc, 1)
-        mean_train_loss.update(train_loss, 1)
-        test_acc.append(test_acc_list)
-        test_loss.append(test_loss_list)
-
-    test_acc = np.mean(test_acc, axis=0)
-    test_loss = np.mean(test_loss, axis=0)
-    # load the model weights
-    model.load_state_dict(initial_weights)
-    return mean_train_acc.avg, mean_train_loss.avg, test_acc, test_loss

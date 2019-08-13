@@ -6,18 +6,14 @@ import os
 import sys
 from fl import FL
 from fl_lstm import FL_LSTM
-from fr_lstm import FR_LSTM
-from utils import load_data, split_data, create_exp_dir, Dictionary, lstm_data_process
-from fedreptile import FR
+from utils import load_data, create_exp_dir, Dictionary, lstm_data_process
 import time
 
 
 if __name__ == '__main__':
     # parameters
     parser = argparse.ArgumentParser("FL_MAML")
-    parser.add_argument('--algo', type=str, default='FL',
-                        help='Algorithm: Federated Learning or FedReptile') # FL or FR
-    parser.add_argument('--model', type=str, default='LSTM',
+    parser.add_argument('--model', type=str, default='LeNet',
                         help='model') # MLP or LeNet or LSTM
     parser.add_argument('--gpu', type=str, default='cuda',
                         help='use gpu or cpu') # cuda or cpu
@@ -27,18 +23,14 @@ if __name__ == '__main__':
     # fraction related parameters
     parser.add_argument('--fraction', type=float, default=0.005,
                         help='fraction of selected clients per round') # 0.01 0.005
-    parser.add_argument('--fraction_t', type=float, default=0.9,
-                        help='fraction of support clients')
+    parser.add_argument('--lstm_fraction', type=float, default=0.05,
+                        help='fraction of selected clients per round')  # 0.1 0.05 0.02
 
     # epoch related parameters
     parser.add_argument('--num_rounds', type=int, default=200,
                         help='number of communication rounds')
     parser.add_argument('--train_epochs', type=int, default=1,
                         help='number of training epochs of FL') # 1 10 20
-    parser.add_argument('--inner_iterations', type=int, default=10,
-                        help='number of inner iterations of FR client update')
-    parser.add_argument('--local_epochs', type=int, default=10,
-                        help='number of localization epochs')
 
     # batch size
     parser.add_argument('--batch_size', type=int, default=10,
@@ -47,18 +39,10 @@ if __name__ == '__main__':
     # learning rate related parameters
     parser.add_argument('--train_lr', type=float, default=0.1,
                         help='train learning rate')
-    parser.add_argument('--local_lr', type=float, default=0.01,
-                        help='localization learning rate')
-    parser.add_argument('--global_lr', type=float, default=1,
-                        help='outer learning rate for globalization')
-
-    # LSTM parameters
-    parser.add_argument('--lstm_fraction', type=float, default=0.05,
-                        help='fraction of selected clients per round')  # 0.1 0.05 0.02
     parser.add_argument('--lstm_lr', type=float, default=20,
                         help='learning rate for LSTM')
-    parser.add_argument('--lstm_local_lr', type=float, default=2,
-                        help='learning rate for LSTM localization')
+
+    # LSTM parameters
     parser.add_argument('--bptt', type=int, default=10,
                         help='sequence length')
     parser.add_argument('--clip', type=float, default=0.25,
@@ -84,63 +68,48 @@ if __name__ == '__main__':
     time_arr = time.localtime(time_stamp)
     # Time_Algorithm_Model_Epoch_Batch_Fraction.txt
     if args.model == 'LSTM':
-        fh = logging.FileHandler(os.path.join(args.save_path, '{}{}{}{}{}{}_{}_{}_E{}_B{}_C{}.txt'
+        fh = logging.FileHandler(os.path.join(args.save_path, '{}{}{}{}{}{}_{}_E{}_B{}_C{}.txt'
                                               .format(time_arr[0], str(time_arr[1]).zfill(2), str(time_arr[2]).zfill(2),
                                                       str(time_arr[3]).zfill(2), str(time_arr[4]).zfill(2),
                                                       str(time_arr[5]).zfill(2),
-                                                      args.algo, args.model, args.train_epochs, args.batch_size,
+                                                      args.model, args.train_epochs, args.batch_size,
                                                       args.lstm_fraction)))
     else:
-        fh = logging.FileHandler(os.path.join(args.save_path, '{}{}{}{}{}{}_{}_{}_E{}_B{}_C{}.txt'
+        fh = logging.FileHandler(os.path.join(args.save_path, '{}{}{}{}{}{}_{}_E{}_B{}_C{}.txt'
                                               .format(time_arr[0],str(time_arr[1]).zfill(2),str(time_arr[2]).zfill(2),
                                                       str(time_arr[3]).zfill(2),str(time_arr[4]).zfill(2),str(time_arr[5]).zfill(2),
-                                                      args.algo,args.model,args.train_epochs,args.batch_size,args.fraction)))
+                                                      args.model,args.train_epochs,args.batch_size,args.fraction)))
     fh.setFormatter(logging.Formatter(log_format))
     logger = logging.getLogger()
     logger.addHandler(fh)
 
     logging.info('*' * 20 + ' Parameters ' + '*' * 20)
+
     if args.model == 'LSTM':
         logging.info('train lr: {}'.format(args.lstm_lr))
-        logging.info('localization lr: {}'.format(args.lstm_local_lr))
     else:
         logging.info('train lr: {}'.format(args.train_lr))
-        logging.info('localization lr: {}'.format(args.local_lr))
     logging.info('batch size: {}'.format(args.batch_size))
-    if args.algo == 'FL':
-        logging.info('epochs: {}'.format(args.train_epochs))
+    logging.info('epochs: {}'.format(args.train_epochs))
+
     logging.info('*' * 52)
 
     if args.model == 'LSTM':
         # load shakespeare data (client: 715)
-        d_train = load_data('shakespeare_train.h5', args)
-        d_test = load_data('shakespeare_test.h5', args)
-
-        # split data into two parts: support client / test client
-        support_train_str, support_test_str, test_train_str, test_test_str = split_data(d_train, d_test, args)
+        d_train = load_data('data/shakespeare_train.h5', args)
+        d_test = load_data('data/shakespeare_test.h5', args)
 
         # preprocess data and construct a dictionary for whole data
         corpus = Dictionary()
-        support_train, support_test = lstm_data_process(support_train_str, support_test_str, corpus,args)
-        test_train, test_test = lstm_data_process(test_train_str, test_test_str, corpus, args)
+        d_train, d_test = lstm_data_process(d_train, d_test, corpus,args)
         args.ntokens = len(corpus)
         args.corpus = corpus
 
-        if args.algo == 'FL':
-            FL_LSTM(support_train, support_test, test_train, test_test, args)
-        elif args.algo == 'FR':
-            FR_LSTM(support_train, support_test, test_train, test_test, args)
+        FL_LSTM(d_train, d_test, args)
+
     else:
         # load MNIST data (client: 3383 / train: 341873 / test: 40832)
-        d_train = load_data('fed_emnist_digitsonly_train.h5', args)
-        d_test = load_data('fed_emnist_digitsonly_test.h5', args)
+        d_train = load_data('data/fed_emnist_digitsonly_train.h5', args)
+        d_test = load_data('data/fed_emnist_digitsonly_test.h5', args)
 
-        # split data into two parts: support client / test client
-        support_train, support_test, test_train, test_test = split_data(d_train, d_test, args)
-
-        if args.algo == 'FL':
-            FL(support_train, support_test, test_train, test_test, args)
-        elif args.algo == 'FR':
-            FR(support_train, support_test, test_train, test_test, args)
-
-
+        FL(d_train, d_test, args)
