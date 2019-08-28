@@ -3,6 +3,8 @@ import torch
 import os
 import shutil
 import myModel
+import numpy as np
+import logging
 
 def load_data(hdf5_file, args):
     file = h5py.File(hdf5_file, 'r')
@@ -29,6 +31,31 @@ def load_data(hdf5_file, args):
             processed_data.append(list(zip(data[i], label[i])))
     return processed_data
 
+def load_poisoned_data(hdf5_file, args):
+    file = h5py.File(hdf5_file, 'r')
+    data = [file['examples'][group]['pixels'][()] for group in file['examples']]
+    label = [file['examples'][group]['label'][()] for group in file['examples']]
+    num_clients = len(data)
+
+    # Poisoning clients number
+    num_poisoned_clients = int(args.poisoning_fraction * len(data))
+    logging.info('number_poisoned_clients: {}'.format(num_poisoned_clients))
+
+    # Randomly select poisoning client ids
+    clientIDs = np.random.choice(range(len(data)), num_poisoned_clients, replace=False)
+
+    processed_data = []
+    for i in range(num_clients):
+        data[i] = torch.tensor(data[i].reshape(data[i].shape[0], 1, 28, 28), device=args.device, dtype=torch.float32)
+        if i in clientIDs:
+            num_samples = len(label[i])
+            for j in range(num_samples):
+                #label[i][j] = 9 - label[i][j]
+                if label[i][j] == 1:
+                    label[i][j] = 7
+        label[i] = torch.tensor(label[i], device=args.device, dtype=torch.long)
+        processed_data.append(list(zip(data[i], label[i])))
+    return processed_data
 
 class AvgrageMeter(object):
     def __init__(self):
