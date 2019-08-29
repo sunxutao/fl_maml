@@ -164,7 +164,7 @@ if __name__ == '__main__':
                 gc.collect()
             avg_poisoning = sum_poisoning / num_avg
             file_open.write(
-                "poisoned situation: batch_size = " + str(args.batch_size) + ", client_fraction = " + str(args.fraction) + + ", train_epochs = " + str(args.train_epochs) +
+                "poisoned situation: batch_size = " + str(args.batch_size) + ", client_fraction = " + str(args.fraction) + ", train_epochs = " + str(args.train_epochs) +
                 ", iteration_num = " + str(args.num_rounds) + ", poisoning_fraction = " + str(args.poisoning_fraction) + ", test accuracy = " + str(avg_poisoning) + "\n")
             file_open.flush()
 
@@ -189,7 +189,7 @@ if __name__ == '__main__':
                 gc.collect()
             avg_poisoning = sum_poisoning / num_avg
             file_open.write(
-                "poisoned situation: batch_size = " + str(args.batch_size) + ", client_fraction = " + str(args.fraction) + + ", train_epochs = " + str(args.train_epochs) +
+                "poisoned situation: batch_size = " + str(args.batch_size) + ", client_fraction = " + str(args.fraction) + ", train_epochs = " + str(args.train_epochs) +
                 ", iteration_num = " + str(args.num_rounds) + ", poisoning_fraction = " + str(args.poisoning_fraction) + ", test accuracy = " + str(avg_poisoning) + "\n")
             file_open.flush()
 
@@ -215,7 +215,7 @@ if __name__ == '__main__':
             avg_poisoning = sum_poisoning / num_avg
             file_open.write(
                 "poisoned situation: batch_size = " + str(args.batch_size) + ", client_fraction = " + str(
-                    args.fraction) + + ", train_epochs = " + str(args.train_epochs) +
+                    args.fraction) + ", train_epochs = " + str(args.train_epochs) +
                 ", iteration_num = " + str(args.num_rounds) + ", poisoning_fraction = " + str(
                     args.poisoning_fraction) + ", test accuracy = " + str(avg_poisoning) + "\n")
             file_open.flush()

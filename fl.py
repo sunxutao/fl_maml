@@ -1,17 +1,37 @@
 import numpy as np
 import logging
+import torch
 import torch.optim as optim
 import torch.utils.data as Data
 from utils import create_model, AvgrageMeter, client_update
 import copy
 
 
+def calculate_distance(weight1, weight2):
+    distance = 0
+    for key in weight1.keys():
+        distance += torch.sum((weight1[key] - weight2[key]) ** 2)
+    return distance
+
 def update_selection_prob(selection_prob, clientIDs, aggregated_update, all_updates):
-    # TODO: update random selection probability
     # step1: calculate the distances between aggregated_update and all_updates
+    distance_list = []
+    for i in range(len(all_updates)):
+        distance = calculate_distance(aggregated_update, all_updates[i])
+        distance_list.append(distance)
+
     # step2: prob_sum = sum up the probabilities of clientIDs in the current selection_prob
+    prob_sum = 0
+    for index in clientIDs:
+        prob_sum += selection_prob[index]
+
     # step3: dis_sum = sum up the 1/distance in step1
+    distance_list = np.reciprocal(distance_list)
+    dis_sum = sum(distance_list)
+
     # step4: selection_prob = update the probability in selection_prob by selection_prob[clientIds[i]] = prob_sum * ((1/dis_i)/dis_sum)
+    for i in range(len(all_updates)):
+        selection_prob[clientIDs[i]] = prob_sum * (distance_list[i] / dis_sum)
     return selection_prob
 
 
@@ -43,24 +63,61 @@ def aggregation(data_train, data_test, args, clientIDs, model, optimizer, select
             for model_id in range(1, len(weight_dict_list)):
                 weight_dict_list[0][key].add_(weight_dict_list[model_id][key] * num_examples[model_id])
             weight_dict_list[0][key].div_(np.sum(num_examples))
-    elif args.robust_method == 'krum':  # krum method
-        # TODO: calculate the distance and find the minimum sum
+        aggregated_weight = weight_dict_list[0]
+    elif args.robust_method == 'krum' or args.robust_method == 'incentive':  # krum method
         # step1: for each update calculate the distances with the other updates
-        # step2: sort the distances of each update, sum up the former k-1 distances
-        # step3: find the update (e.g., min_update) with minimum sum
-        # step4: the aggregated update is the average value of min_update and its former k-1 updates
-        k = len(clientIDs) - len(clientIDs) * args.poisoning_fraction
-    else:  # incentive method
-        # TODO: calculate the distance and find the minimum sum
-        # step1: for each update calculate the distances with the other updates
-        # step2: sort the distances of each update, sum up the former k-1 distances
-        # step3: find the update (e.g., min_update) with minimum sum
-        # step4: the aggregated update is the average value of min_update and its former k-1 updates
-        # step5: update selection_prob
-        k = len(clientIDs) - len(clientIDs) * args.poisoning_fraction
-        selection_prob = update_selection_prob(selection_prob, clientIDs)
+        k = int(len(clientIDs) - len(clientIDs) * args.poisoning_fraction)
+        distance_list = [] # record the distance sum of each client
+        for i in range(len(weight_dict_list)):
+            distance = []
+            for j in range(len(weight_dict_list)):
+                if i == j:
+                    continue
+                difference = calculate_distance(weight_dict_list[i], weight_dict_list[j])
+                distance.append(difference)
+            # step2: sort the distances of each update, sum up the former k-1 distances
+            distance.sort()
+            distance = distance[:k-1]
+            sum_distance = sum(distance)
+            distance_list.append(sum_distance)
 
-    return weight_dict_list[0], mean_train_acc.avg, mean_train_loss.avg, mean_test_acc.avg, mean_test_loss.avg, selection_prob
+        # step3: find the update (e.g., min_update) with minimum sum
+        min_update_index = distance_list.index(min(distance_list))
+
+        # step4: the aggregated update is the average value of min_update and its former k-1 updates
+        neighbor_list = []
+        for i in range(len(weight_dict_list)):
+            if (i == min_update_index):
+                continue
+            info = []
+            difference = 0
+            for key in weight_dict_list[i].keys():
+                difference += torch.sum((weight_dict_list[i][key] - weight_dict_list[min_update_index][key]) ** 2)
+            info.append(difference)
+            info.append(i)
+            neighbor_list.append(info)
+        neighbor_list.sort()
+        neighbor_list = neighbor_list[:k-1]
+        neighbor_index = []
+        for neighbor_info in neighbor_list:
+            neighbor_index.append(neighbor_info[1])
+
+        aggregated_weight = copy.deepcopy(weight_dict_list[min_update_index])
+
+        for key in aggregated_weight.keys():
+            sum_example = 0
+            aggregated_weight[key] *= num_examples[min_update_index]
+            sum_example += num_examples[min_update_index]
+            for model_id in neighbor_index:
+                aggregated_weight[key].add_(weight_dict_list[model_id][key] * num_examples[model_id])
+                sum_example += num_examples[model_id]
+            aggregated_weight[key].div_(sum_example)
+
+        if args.robust_method == 'incentive':
+            # step5: update selection_prob
+            selection_prob = update_selection_prob(selection_prob, clientIDs, aggregated_weight, weight_dict_list)
+
+    return aggregated_weight, mean_train_acc.avg, mean_train_loss.avg, mean_test_acc.avg, mean_test_loss.avg, selection_prob
 
 def FL(d_train, d_test, args):
     # Convert to data loader
