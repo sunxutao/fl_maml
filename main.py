@@ -33,9 +33,9 @@ if __name__ == '__main__':
                         help='robust method type')  # none, krum, incentive
 
     # epoch related parameters
-    parser.add_argument('--num_rounds', type=int, default=200,
+    parser.add_argument('--num_rounds', type=int, default=500,
                         help='number of communication rounds')
-    parser.add_argument('--train_epochs', type=int, default=10,
+    parser.add_argument('--train_epochs', type=int, default=5,
                         help='number of training epochs of FL')  # 1 10 20
 
     # batch size
@@ -120,33 +120,34 @@ if __name__ == '__main__':
         # d_train = load_data('data/fed_emnist_digitsonly_train.h5', args)
         # d_test = load_data('data/fed_emnist_digitsonly_test.h5', args)
 
-        num_avg = 1
+        num_avg = 50
         file_open = open("poison_fraction_results.txt", "w")
-        file_open.write("*****Begin normal situation*****\n")
-        file_open.flush()
-
-        # normal situation
-        sum_normal = 0.0
-        for i in range(num_avg):
-            d_train = load_data('data/fed_emnist_digitsonly_train.h5', args)
-            d_test = load_data('data/fed_emnist_digitsonly_test.h5', args)
-            current_test_accuracy = FL(d_train, d_test, args)
-            file_open.write("iteration " + str(i) + " test accuracy = " + str(current_test_accuracy) + "\n")
-            file_open.flush()
-            sum_normal += current_test_accuracy
-            del d_train, d_test
-            gc.collect()
-
-        avg_normal = sum_normal / num_avg
-        file_open.write("normal situation: batch_size = " + str(args.batch_size) + ", client_fraction = " + str(args.fraction) + ", train_epochs = " + str(args.train_epochs) +
-                        ", iteration_num = " + str(args.num_rounds) + ", test accuracy = " + str(avg_normal) + "\n")
-        file_open.flush()
-
-        file_open.write("*****Begin poisoning situation, with none robust method*****\n")
-        file_open.flush()
+        # file_open.write("*****Begin normal situation*****\n")
+        # file_open.flush()
+        #
+        # # normal situation
+        # sum_normal = 0.0
+        # for i in range(num_avg):
+        #     d_train = load_data('data/fed_emnist_digitsonly_train.h5', args)
+        #     d_test = load_data('data/fed_emnist_digitsonly_test.h5', args)
+        #     current_test_accuracy = FL(d_train, d_test, args)
+        #     file_open.write("iteration " + str(i) + " test accuracy = " + str(current_test_accuracy) + "\n")
+        #     file_open.flush()
+        #     sum_normal += current_test_accuracy
+        #     del d_train, d_test
+        #     gc.collect()
+        #
+        # avg_normal = sum_normal / num_avg
+        # file_open.write("normal situation: batch_size = " + str(args.batch_size) + ", client_fraction = " + str(args.fraction) + ", train_epochs = " + str(args.train_epochs) +
+        #                 ", iteration_num = " + str(args.num_rounds) + ", test accuracy = " + str(avg_normal) + "\n")
+        # file_open.flush()
+        #
+        # file_open.write("*****Begin poisoning situation, with none robust method*****\n")
+        # file_open.flush()
 
         # poisoning situation with none robust method
-        poisoning_fraction = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
+        # poisoning_fraction = [0.1, 0.2, 0.3]
+        poisoning_fraction = [0.3]
 
         for fraction in poisoning_fraction:
             file_open.write("poisoning fraction = " + str(fraction) + "\n")
@@ -220,5 +221,28 @@ if __name__ == '__main__':
                     args.poisoning_fraction) + ", test accuracy = " + str(avg_poisoning) + "\n")
             file_open.flush()
 
+        file_open.write("*****Begin normal situation*****\n")
+        file_open.flush()
+
+        # normal situation
+        sum_normal = 0.0
+        for i in range(num_avg):
+            d_train = load_data('data/fed_emnist_digitsonly_train.h5', args)
+            d_test = load_data('data/fed_emnist_digitsonly_test.h5', args)
+            current_test_accuracy = FL(d_train, d_test, args)
+            file_open.write("iteration " + str(i) + " test accuracy = " + str(current_test_accuracy) + "\n")
+            file_open.flush()
+            sum_normal += current_test_accuracy
+            del d_train, d_test
+            gc.collect()
+
+        avg_normal = sum_normal / num_avg
+        file_open.write("normal situation: batch_size = " + str(args.batch_size) + ", client_fraction = " + str(
+            args.fraction) + ", train_epochs = " + str(args.train_epochs) +
+                        ", iteration_num = " + str(args.num_rounds) + ", test accuracy = " + str(avg_normal) + "\n")
+        file_open.flush()
+
+        file_open.write("*****Begin poisoning situation, with none robust method*****\n")
+        file_open.flush()
 
         file_open.close()

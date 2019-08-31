@@ -50,9 +50,9 @@ def load_poisoned_data(hdf5_file, args):
         if i in clientIDs:
             num_samples = len(label[i])
             for j in range(num_samples):
-                #label[i][j] = 9 - label[i][j]
-                if label[i][j] == 1:
-                    label[i][j] = 7
+                label[i][j] = 9 - label[i][j]
+                #if label[i][j] == 1:
+                #    label[i][j] = 7
         label[i] = torch.tensor(label[i], device=args.device, dtype=torch.long)
         processed_data.append(list(zip(data[i], label[i])))
     return processed_data
