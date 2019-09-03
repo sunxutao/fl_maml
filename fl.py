@@ -6,11 +6,10 @@ import torch.utils.data as Data
 from utils import create_model, AvgrageMeter, client_update
 import copy
 
-
 def calculate_distance(weight1, weight2):
     distance = 0
     for key in weight1.keys():
-        distance += torch.sum((weight1[key] - weight2[key]) ** 2)
+        distance += torch.sum((weight1[key] - weight2[key]) ** 2) ** 0.5
     return distance
 
 def update_selection_prob(selection_prob, clientIDs, aggregated_update, all_updates):
@@ -90,9 +89,7 @@ def aggregation(data_train, data_test, args, clientIDs, model, optimizer, select
             if (i == min_update_index):
                 continue
             info = []
-            difference = 0
-            for key in weight_dict_list[i].keys():
-                difference += torch.sum((weight_dict_list[i][key] - weight_dict_list[min_update_index][key]) ** 2)
+            difference = calculate_distance(weight_dict_list[i], weight_dict_list[min_update_index])
             info.append(difference)
             info.append(i)
             neighbor_list.append(info)
